@@ -1,0 +1,385 @@
+---
+title: "Final_project"
+output: html_document
+date: "2023-05-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import Data
+
+```{r}
+# Load data
+data <- read.csv("/Users/nbarac/Documents/MScA/Q3/Time Series/Final/raw_sales.csv")
+```
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(ggpubr)
+library(forecast)
+```
+
+#1 Problem statement
+The objective of this study is to develop a predictive model for the housing market in order to assist future home buyers in forecasting the best time to enter the market for homeownership. The housing market is subject to various factors, such as property prices, property types, and market trends, which can significantly impact the decision-making process for potential home buyers. By leveraging historical real estate sales data and employing appropriate exploratory data analysis (EDA) techniques, I aim to provide valuable insights and forecasts to aid individuals in making informed decisions about their home purchase timing.
+
+
+#2 Assumptions/Hypotheses about data and/or modeling
+Temporal Dependence: It can be assumed that the sales data exhibit temporal dependence, meaning that the sales in one period may be influenced by the sales in previous periods. This assumption is important for time series modeling approaches like ARIMA, SARIMA, and Holt-Winters.
+
+Stationarity: Assuming the data has been preprocessed to ensure stationarity, it can be hypothesized that the statistical properties of the sales data, such as mean and variance, remain relatively constant over time. This assumption is crucial for time series models to capture meaningful patterns and make accurate forecasts.
+
+Seasonality: Based on the provided "season" variable, it can be hypothesized that there is a seasonal component in the sales data. This implies that the sales exhibit recurring patterns within a specific time frame (e.g., monthly, quarterly). Models like SARIMA and Holt-Winters are designed to capture and forecast seasonal patterns.
+
+
+```{r}
+# Display first few rows of the data
+head(data)
+```
+
+```{r}
+# Check data information
+str(data)
+```
+
+#3 Data properties (stationarity, correlations, data distribution) and Exploratory data analysis
+
+```{r}
+# Check for missing values
+any(is.na(data))
+```
+
+```{r}
+# Print time period
+cat("Time period from", min(data$datesold), "to", max(data$datesold), "\n")
+```
+#EDA 
+```{r}
+# Monthly number of house sales between 2007 and 2019
+data$datesold <- as.Date(data$datesold)
+monthly_counts <- data %>% 
+  mutate(month = month(datesold)) %>% 
+  count(month) %>% 
+  arrange(month)
+barplot(monthly_counts$n, names.arg = monthly_counts$month, xlab = "Month", ylab = "Number of House Sales")
+```
+
+```{r}
+# Yearly number of house sales between 2007 and 2019
+yearly_counts <- data %>% 
+  mutate(year = year(datesold)) %>% 
+  count(year) %>% 
+  arrange(year)
+barplot(yearly_counts$n, names.arg = yearly_counts$year, xlab = "Year", ylab = "Number of House Sales")
+```
+
+```{r}
+# Define custom labels for bins
+bin_labels <- c("2600-2700", "2701-2800", "2801-2915")
+
+# Bin the postcode for easier analysis
+data$postcode_bin <- cut(data$postcode, breaks = c(2600, 2700, 2800, 2915), labels = bin_labels)
+
+# Create a bar plot of postcode bins
+barplot(table(data$postcode_bin), xlab = "Postcode Bins", ylab = "Count")
+```
+
+```{r}
+# Pie chart of property types
+property_type_counts <- table(data$propertyType)
+pie(property_type_counts, labels = c("house", "unit"), main = "Property Type Distribution")
+```
+
+```{r}
+# House sales in postcode 2600 - 2700
+data1 <- data[data$postcode_bin %in% c("2600-2700"), ]
+```
+
+```{r}
+# House sales in postcode 2801-2915
+data2 <- data[data$postcode_bin %in% c("2801-2915"), ]
+```
+
+```{r}
+# Average sale price of houses for each of the two postcode bins
+aggregate_price1 <- aggregate(price ~ datesold, data = data1, FUN = mean)
+aggregate_price2 <- aggregate(price ~ datesold, data = data2, FUN = mean)
+plot(aggregate_price1$datesold, aggregate_price1$price, type = "l", col = "blue", xlab = "Year", ylab = "Average Price", main = "Average Sale Price of Houses")
+lines(aggregate_price2$datesold, aggregate_price2$price, col = "red")
+legend("topleft", legend = c("2600-2700 postcode", "2801-2915 postcode"), col = c("blue", "red"), lty = 1)
+```
+
+it has seasonality from the ACF curves
+```{r}
+# Autocorrelation for house sales price for postcodes group 1
+acf(data1$price, lag.max = 25, main = "Autocorrelation - Postcodes 2600-2700"
+    )
+```
+
+
+```{r}
+# Autocorrelation for house sales price for postcodes group 2
+acf(data2$price, lag.max = 25, main = "Autocorrelation - Postcodes 2801-2915")
+```
+
+
+```{r}
+# Convert datesold to Date format
+data$datesold <- as.Date(data$datesold)
+
+# Extract year from datesold
+data$datesold_year <- format(data$datesold, "%Y")
+
+# Load required library
+library(ggplot2)
+
+# Create boxplot
+ggplot(data, aes(x = datesold_year, y = price)) +
+  geom_boxplot() +
+  xlab("Year") +
+  ylab("Price")
+```
+
+```{r}
+# Create boxplot
+ggplot(data, aes(x = 1, y = price)) +
+  geom_boxplot() +
+  xlab("") +
+  ylab("Price")
+```
+
+```{r}
+# Set figure size
+options(repr.plot.width = 12, repr.plot.height = 6)
+
+# Create line plot
+ggplot(data = data, aes(x = datesold_year, y = price)) +
+  geom_line() +
+  xlab("") +
+  ylab("Price")
+```
+
+```{r}
+# Set figure size
+options(repr.plot.width = 12, repr.plot.height = 6)
+
+# Set plot style to 'fivethirtyeight' (optional)
+theme_set(theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()))
+# If the 'ggthemes' package is installed, you can use theme_fivethirtyeight() instead
+
+# Create line plot
+ggplot(data = data, aes(x = datesold_year, y = price)) +
+  geom_line() +
+  geom_hline(yintercept = mean(data$price), color = "red", linetype = "dashed", label = "change mean") +
+  xlab("") +
+  ylab("Price") +
+  theme(legend.position = "bottom")  # Adjust legend position
+```
+#MA Model
+```{r}
+library(stats)
+```
+
+```{r}
+# Create SARIMAX model
+modelo <- arima(data$price, order = c(0, 0, 1))
+
+# Print model summary
+print(summary(modelo))
+```
+
+
+```{r}
+# Plot diagnostics
+tsdisplay(modelo$residuals, lag.max = 25)
+
+# Adjust figure size (optional)
+options(repr.plot.width = 12, repr.plot.height = 6)
+```
+
+
+
+#4 Data processing (anomaly detection, cleansing and imputations) and transformation 
+Data Cleansing: Data cleansing involves handling missing values, duplicate entries, or other data quality issues. Missing values can be imputed using techniques such as linear interpolation, forward-fill, or backward-fill. Duplicate entries need to be removed to avoid bias in the model.
+
+Feature Engineering: In addition to the target variable (price), incorporating relevant exogenous variables or predictors can improve the model's accuracy. These variables could be economic indicators, weather data, demographic information, or any other factors that influence the time series.
+
+#5 Feature engineering
+
+added bin_code to see postal codes in one area vs another. added year date sold to be able to digest the data better and understand the forecast. added trend and seasonality, this way I was able to understand what kinds of seasonality the house sales had the visualize the trend. It is ver commen to have seasonality and trend with the housing market so I thought this would be a great add to help the model.  
+
+#6 Proposed approaches (model) with justification and trade-offs
+Holt-Winters Approach:
+
+Justification: The Holt-Winters model is suitable when dealing with time series data exhibiting trend and seasonality. It captures the underlying patterns in the data and provides accurate forecasts by considering the current level, trend, and seasonality of the series. It can handle both additive and multiplicative seasonality.
+Trade-offs: The Holt-Winters model assumes that the patterns observed in the past will continue into the future, which may not always hold true. It may struggle to adapt to abrupt changes or irregularities in the data. Additionally, the model's performance may degrade for long-term forecasts.
+
+#7 Results (accuracy) and learnings from the methodology
+
+Based on these accuracy measures, the lower the values for RMSE, MAE, MPE, and MAPE, the better the model performance. Comparing the models, it appears that Model 2 (Holt-Winters) has the lowest RMSE and MAE, indicating better accuracy in forecasting. 
+```{r}
+# Convert 'datesold' column to Date format
+data$datesold <- as.Date(data$datesold)
+
+# Create a time series object
+ts_data <- ts(data$price, start = c(2007, 1), frequency = 12)
+
+# Holt-Winters model
+holt_winters <- hw(ts_data)
+holt_winters_forecast <- forecast(holt_winters, h = 10)
+
+# Extract forecasted values
+holt_winters_forecast_values <- holt_winters_forecast$mean
+
+# Extract corresponding actual values
+actual_values <- ts_data[(length(ts_data) + 1 - length(holt_winters_forecast_values)):length(ts_data)]
+
+# Calculate accuracy measures
+holt_winters_accuracy <- accuracy(holt_winters_forecast_values, actual_values)
+
+# Print accuracy measures
+cat("Holt-Winters Accuracy Measures:\n")
+print(holt_winters_accuracy)
+```
+```{r}
+# Print model summary
+print(summary(holt_winters))
+```
+
+Seasonality: The Holt-Winters model is well-suited for time series data with seasonality. It can capture both the trend and the seasonal patterns in the data, making it useful for forecasting in scenarios where seasonality is present. By incorporating seasonal components, the model can provide more accurate predictions during different time periods, such as monthly, quarterly, or yearly patterns.
+
+Model Assumptions: The Holt-Winters model assumes that the underlying patterns in the data are relatively stable and predictable. It may not perform well if there are sudden shifts or irregularities in the time series data. Carefully analyze the data for any changes in trends, seasonality, or other patterns that may violate the model's assumptions.
+
+Model Evaluation: Proper evaluation of the Holt-Winters model is essential to assess its performance. Calculate accuracy metrics such as Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), or Mean Absolute Percentage Error (MAPE) to measure the forecast errors. Compare the model's performance with other forecasting techniques to determine its effectiveness and suitability for the specific dataset.
+
+```{r}
+# Convert 'datesold' column to Date format
+data$datesold <- as.Date(data$datesold)
+
+# Create a time series object
+ts_data <- ts(data$price, start = c(2007, 1), frequency = 12)
+
+# ARIMA model
+arima_model <- auto.arima(ts_data)
+arima_forecast <- forecast(arima_model, h = 10)
+
+# Extract forecasted values
+arima_forecast_values <- arima_forecast$mean
+
+# Extract corresponding actual values
+actual_values <- ts_data[(length(ts_data) + 1 - length(arima_forecast_values)):length(ts_data)]
+
+# Calculate accuracy measures
+arima_accuracy <- accuracy(arima_forecast_values, actual_values)
+
+# Print accuracy measures
+cat("ARIMA Accuracy Measures:\n")
+print(arima_accuracy)
+```
+
+```{r}
+print(summary(arima_model))
+```
+
+
+
+```{r}
+# Convert 'datesold' column to Date format
+data$datesold <- as.Date(data$datesold)
+
+# Create a time series object
+ts_data <- ts(data$price, start = c(2007, 1), frequency = 12)
+
+# SARIMA model
+sarima_model <- auto.arima(ts_data, seasonal = TRUE)
+sarima_forecast <- forecast(sarima_model, h = 10)
+
+# Extract forecasted values
+sarima_forecast_values <- sarima_forecast$mean
+
+# Extract corresponding actual values
+actual_values <- ts_data[(length(ts_data) + 1 - length(sarima_forecast_values)):length(ts_data)]
+
+# Calculate accuracy measures
+sarima_accuracy <- accuracy(sarima_forecast_values, actual_values)
+
+# Print accuracy measures
+cat("SARIMA Accuracy Measures:\n")
+print(sarima_accuracy)
+```
+
+```{r}
+print(summary(sarima_model))
+```
+
+
+```{r}
+# Convert 'datesold' column to Date format
+data$datesold <- as.Date(data$datesold)
+
+# Create 'trend' variable
+data$trend <- 1:length(data$datesold)
+
+# Create 'season' variable
+data$season <- as.numeric(format(data$datesold, "%m"))
+
+# Create a time series object
+ts_data <- ts(data$price, start = c(2007, 1), frequency = 12)
+
+# Fit Linear Regression model with ARMA errors
+linear_reg_arma <- lm(price ~ trend + season, data = data)
+
+# Generate new data for forecast
+new_data <- data.frame(trend = length(data$trend) + 1:(10), season = rep(1:12, length.out = 10))
+
+# Generate forecasts
+linear_reg_arma_forecast <- forecast(linear_reg_arma, newdata = new_data)
+
+# Extract forecasted values
+linear_reg_arma_forecast_values <- linear_reg_arma_forecast$mean
+
+# Extract corresponding actual values
+actual_values <- ts_data[(length(ts_data) + 1 - length(linear_reg_arma_forecast_values)):length(ts_data)]
+
+# Calculate accuracy measures
+linear_reg_arma_accuracy <- accuracy(linear_reg_arma_forecast_values, actual_values)
+
+# Print accuracy measures
+cat("Linear Regression with ARMA Errors Accuracy Measures:\n")
+print(linear_reg_arma_accuracy)
+```
+
+```{r}
+print(summary(linear_reg_arma_forecast))
+```
+
+#8 Future Work
+
+Hyperparameter Tuning: Fine-tune the hyperparameters of the chosen model to optimize its performance. Use techniques like grid search, random search, or Bayesian optimization to find the best combination of hyperparameters.
+
+Rolling Window Analysis: Implement a rolling window approach where the model is trained on a moving window of historical data. This allows the model to adapt and update its parameters over time, incorporating the latest available information for improved forecasting accuracy.
+
+Advanced Techniques: Consider more advanced techniques like deep learning architectures (e.g., convolutional neural networks or transformers) or state space models (e.g., Kalman filters or particle filters) to improve the modeling accuracy and capture intricate relationships in the data.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
